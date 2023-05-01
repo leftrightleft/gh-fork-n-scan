@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -9,12 +10,16 @@ import (
 	"log"
 
 	"github.com/cli/go-gh"
+	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cli/go-gh/v2/pkg/tableprinter"
 	"github.com/cli/go-gh/v2/pkg/term"
 )
 
 // struct  supporting the respons from getRepos
 type Repo struct {
+	Language struct {
+		Name string `json:"name"`
+	} `json:"primaryLanguage"`
 	NameWithOwner string `json:"nameWithOwner"`
 	Name          string `json:"name"`
 	Owner         struct {
@@ -45,18 +50,26 @@ func readFlags() (string, string, string) {
 }
 
 func GetRepos(sourceOrg string) Repos {
-	var repos Repos
-	args := []string{"repo", "list", sourceOrg, "-l", "javascript", "--no-archived", "--source", "--json", "nameWithOwner,owner,name"}
-	stdOut, stdErr, err := gh.Exec(args...)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(stdErr.String())
-	err = json.Unmarshal(stdOut.Bytes(), &repos)
-	if err != nil {
-		log.Fatal(err)
-	}
+	var repos []Repo
+	languages := []string{"python", "go", "javascript", "ruby"}
+	for _, language := range languages {
+		var languageRepos []Repo
+		args := []string{"repo", "list", sourceOrg, "-l", language, "--no-archived", "--source", "--visibility", "public", "--json", "nameWithOwner,owner,name,primaryLanguage"}
+		stdOut, stdErr, err := gh.Exec(args...)
+		if err != nil {
+			log.Fatal(err)
+		}
 
+		if stdErr.String() != "" {
+			fmt.Println(stdErr.String())
+		}
+
+		err = json.Unmarshal(stdOut.Bytes(), &languageRepos)
+		if err != nil {
+			log.Fatal(err)
+		}
+		repos = append(repos, languageRepos...)
+	}
 	return repos
 }
 
@@ -65,21 +78,45 @@ func ForkRepos(repos []Repo, destOrg string) {
 		args := []string{"repo", "fork", repo.NameWithOwner, "--org", destOrg}
 		_, stdErr, err := gh.Exec(args...)
 		if err != nil {
-			log.Fatal(err)
+			// log.Fatal(err)
+			fmt.Println(err.Error())
 		}
-		fmt.Println(stdErr.String())
+
+		if stdErr.String() != "" {
+			fmt.Println(stdErr.String())
+		}
 	}
 }
 
-func AssignTopicToRepos(repos []Repo, destOrg string) {
+func AssignTopicToRepos(repos []Repo, destOrg string) string {
+	var topic string
 	for _, repo := range repos {
-		topic := repo.Owner.Login
+		topic = repo.Owner.Login
 		destRepo := fmt.Sprintf("%s/%s", destOrg, repo.Name)
 		args := []string{"repo", "edit", destRepo, "--add-topic", topic}
 		_, _, err := gh.Exec(args...)
 		if err != nil {
 			log.Fatal(err)
 		}
+	}
+
+	return topic
+}
+
+func EnableDefaultSetup(destOrg string, repos []Repo) {
+	str := `{"state":"configured"}`
+	reader := bytes.NewReader([]byte(str))
+	client, err := api.DefaultRESTClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, repo := range repos {
+		response := []struct{ Name string }{}
+		err = client.Patch(fmt.Sprintf("repos/%s/%s/code-scanning/default-setup", destOrg, repo.Name), reader, response)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(response)
 	}
 }
 
@@ -98,8 +135,9 @@ func PrintTable(repos []Repo) int {
 	for _, repo := range repos {
 		t.AddField("-", tableprinter.WithColor(green), tableprinter.WithTruncate(nil))
 		t.AddField(repo.NameWithOwner, tableprinter.WithTruncate(nil))
-		t.AddField(repo.Name, tableprinter.WithTruncate(nil))
-		t.AddField(repo.Owner.Login, tableprinter.WithTruncate(nil))
+		// t.AddField(repo.Name, tableprinter.WithTruncate(nil))
+		// t.AddField(repo.Owner.Login, tableprinter.WithTruncate(nil))
+		t.AddField(repo.Language.Name, tableprinter.WithTruncate(nil))
 		t.EndRow()
 		count++
 
@@ -131,8 +169,9 @@ func main() {
 
 	ForkRepos(repos, destOrg)
 	if sourceOrg != "" {
-		AssignTopicToRepos(repos, destOrg)
+		topic := AssignTopicToRepos(repos, destOrg)
+		EnableDefaultSetup(destOrg, repos)
+		fmt.Printf("Done 🤙 %s", topic)
 	}
 
-	fmt.Println("Done 🤙")
 }
