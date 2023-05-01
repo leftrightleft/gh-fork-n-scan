@@ -49,7 +49,7 @@ func readFlags() (string, string, string) {
 
 func GetRepos(sourceOrg string) Repos {
 	var repos []Repo
-	languages := []string{"python", "go", "javascript", "ruby"}
+	languages := []string{"python", "go", "javascript", "ruby", "java", "cpp"}
 	for _, language := range languages {
 		var languageRepos []Repo
 		args := []string{"repo", "list", sourceOrg, "-l", language, "--no-archived", "--source", "--visibility", "public", "--json", "nameWithOwner,owner,name,primaryLanguage"}
@@ -97,7 +97,7 @@ func AssignTopicToRepos(repos []Repo, destOrg string) string {
 		_, stdErr, err := gh.Exec(args...)
 
 		if stdErr.String() != "" {
-			fmt.Println(stdErr.String())
+			log.Println(stdErr.String())
 		}
 
 		if err != nil {
@@ -173,23 +173,13 @@ func main() {
 	}
 
 	ForkRepos(repos, destOrg)
-	if sourceOrg != "" {
-		topic := AssignTopicToRepos(repos, destOrg)
-		// var input string
-		// fmt.Printf("\nEnable code scanning on %d repos? (y/n)", repoCount)
-		// fmt.Scanln(&input)
-		// if input != "y" {
-		// 	fmt.Printf("\nDone! 🤙\n\n")
-		// 	fmt.Printf("Visit the following URL to view code scanning results:\n")
-		// 	fmt.Printf("https://github.com/orgs/%s/security/alerts/code-scanning?query=is%%3Aopen+topic%%3A%s\n", destOrg, topic)
-		// 	EnableDefaultSetup(destOrg, repos)
-		// 	return
-		// }
+	topic := AssignTopicToRepos(repos, destOrg)
 
-		fmt.Printf("\nDone! 🤙\n\n")
-		fmt.Printf("Visit the following URL to enable code scanning:\n")
-		fmt.Printf("https://github.com/orgs/%s/security/coverage?query=topic%%3A%s\n", destOrg, topic)
+	fmt.Printf("\nDone! 🤙\n\n")
+	fmt.Printf("Visit the following URL to enable code scanning (hint: select all, choose security settings, enable code scanning):\n")
+	fmt.Printf("https://github.com/orgs/%s/security/coverage?query=topic%%3A%s\n", destOrg, topic)
+	fmt.Printf("\nVisit this URL to view results:\n")
+	fmt.Printf("https://github.com/orgs/%s/security/risk?query=topic%%3A%s\n", destOrg, topic)
 
-	}
-
+	return
 }
