@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"log"
 
 	"github.com/cli/go-gh"
-	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cli/go-gh/v2/pkg/tableprinter"
 	"github.com/cli/go-gh/v2/pkg/term"
 )
@@ -77,14 +75,16 @@ func ForkRepos(repos []Repo, destOrg string) {
 	for _, repo := range repos {
 		args := []string{"repo", "fork", repo.NameWithOwner, "--org", destOrg}
 		_, stdErr, err := gh.Exec(args...)
-		if err != nil {
-			// log.Fatal(err)
-			fmt.Println(err.Error())
-		}
-
 		if stdErr.String() != "" {
 			fmt.Println(stdErr.String())
 		}
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Println("Forked", repo.NameWithOwner)
+
 	}
 }
 
@@ -94,31 +94,38 @@ func AssignTopicToRepos(repos []Repo, destOrg string) string {
 		topic = repo.Owner.Login
 		destRepo := fmt.Sprintf("%s/%s", destOrg, repo.Name)
 		args := []string{"repo", "edit", destRepo, "--add-topic", topic}
-		_, _, err := gh.Exec(args...)
+		_, stdErr, err := gh.Exec(args...)
+
+		if stdErr.String() != "" {
+			fmt.Println(stdErr.String())
+		}
+
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		log.Println("Assigned topic", topic, "to", destRepo)
 	}
 
 	return topic
 }
 
-func EnableDefaultSetup(destOrg string, repos []Repo) {
-	str := `{"state":"configured"}`
-	reader := bytes.NewReader([]byte(str))
-	client, err := api.DefaultRESTClient()
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, repo := range repos {
-		response := []struct{ Name string }{}
-		err = client.Patch(fmt.Sprintf("repos/%s/%s/code-scanning/default-setup", destOrg, repo.Name), reader, response)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(response)
-	}
-}
+// TODO: Enable default setup for code scanning
+// func EnableDefaultSetup(destOrg string, repos []Repo) {
+// 	for _, repo := range repos {
+// 		args := []string{"api", "--method", "patch", fmt.Sprintf("/repos/%s/%s/code-scanning/default-setup", destOrg, repo.Name), "-f", "state='configured'"}
+// 		_, stdErr, err := gh.Exec(args...)
+// 		if stdErr.String() != "" {
+// 			log.Println(stdErr.String())
+// 		}
+
+// 		if err != nil {
+// 			log.Fatal(err)
+// 		}
+
+// 		// fmt.Println(response)
+// 	}
+// }
 
 // Print tabular data to a terminal or in machine-readable format for scripts.
 func PrintTable(repos []Repo) int {
@@ -135,8 +142,6 @@ func PrintTable(repos []Repo) int {
 	for _, repo := range repos {
 		t.AddField("-", tableprinter.WithColor(green), tableprinter.WithTruncate(nil))
 		t.AddField(repo.NameWithOwner, tableprinter.WithTruncate(nil))
-		// t.AddField(repo.Name, tableprinter.WithTruncate(nil))
-		// t.AddField(repo.Owner.Login, tableprinter.WithTruncate(nil))
 		t.AddField(repo.Language.Name, tableprinter.WithTruncate(nil))
 		t.EndRow()
 		count++
@@ -170,8 +175,21 @@ func main() {
 	ForkRepos(repos, destOrg)
 	if sourceOrg != "" {
 		topic := AssignTopicToRepos(repos, destOrg)
-		EnableDefaultSetup(destOrg, repos)
-		fmt.Printf("Done 🤙 %s", topic)
+		// var input string
+		// fmt.Printf("\nEnable code scanning on %d repos? (y/n)", repoCount)
+		// fmt.Scanln(&input)
+		// if input != "y" {
+		// 	fmt.Printf("\nDone! 🤙\n\n")
+		// 	fmt.Printf("Visit the following URL to view code scanning results:\n")
+		// 	fmt.Printf("https://github.com/orgs/%s/security/alerts/code-scanning?query=is%%3Aopen+topic%%3A%s\n", destOrg, topic)
+		// 	EnableDefaultSetup(destOrg, repos)
+		// 	return
+		// }
+
+		fmt.Printf("\nDone! 🤙\n\n")
+		fmt.Printf("Visit the following URL to enable code scanning:\n")
+		fmt.Printf("https://github.com/orgs/%s/security/coverage?query=topic%%3A%s\n", destOrg, topic)
+
 	}
 
 }
